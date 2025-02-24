@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pearl The Tank Defender</title>
+    <style>
+        canvas { border: 1px solid black; background: #ADD8E6; }
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #000; color: white; font-family: Arial, sans-serif; }
+        #game-over { position: absolute; text-align: center; display: none; }
+        #restart-btn { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #4CAF50; border: none; color: white; }
+        #restart-btn:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="game-over">
+        <h1 id="game-over-text">Game Over</h1>
+        <button id="restart-btn" onclick="resetGame()">Restart</button>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverScreen = document.getElementById('game-over');
+        const gameOverText = document.getElementById('game-over-text');
+
+        // Load assets
+        const pearlImg = new Image(); pearlImg.src = 'pearl.png';
+        const enemyImg = new Image(); enemyImg.src = 'enemy.png';
+        const bulletImg = new Image(); bulletImg.src = 'bullet.png';
+        const bulletSound = new Audio('bullet.wav');
+        const music = new Audio('music.wav'); music.loop = true; music.volume = 0.3;
+
+        // Game state
+        let player = { x: 50, y: 300, bullets: 1 }; // Hero starts on the left
+        let enemies = [];
+        let bullets = [];
+        let powerups = [];
+        let score = 0;
+        let gameOver = false;
+        const totalEnemies = 20;
+        let enemiesSpawned = 0;
+
+        // Controls
+        let keys = {};
+        window.addEventListener('keydown', (e) => keys[e.key] = true);
+        window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        function spawnEnemy() {
+            if (enemiesSpawned < totalEnemies) {
+                enemies.push({ x: 800, y: Math.random() * 550 + 25, speed: 1 + Math.random() * 2 });
+                enemiesSpawned++;
+            }
+        }
+
+        function spawnPowerup() {
+            if (Math.random() < 0.01) powerups.push({ x: Math.random() * 600 + 100, y: Math.random() * 550 + 25 });
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            // Player movement (up/down/left/right)
+            if (keys['ArrowUp']) player.y = Math.max(player.y - 5, 25);
+            if (keys['ArrowDown']) player.y = Math.min(player.y + 5, 575);
+            if (keys['ArrowLeft']) player.x = Math.max(player.x - 5, 25); // Left boundary
+            if (keys['ArrowRight']) player.x = Math.min(player.x + 5, 775); // Right boundary
+
+            // Shooting
+            if (keys[' '] && !keys['spaceHeld']) {
+                if (player.bullets === 1) {
+                    bullets.push({ x: player.x + 25, y: player.y, dx: 7 });
+                } else {
+                    bullets.push({ x: player.x + 25, y: player.y, dx: 7, dy: -1 }); // Scatter up
+                    bullets.push({ x: player.x + 25, y: player.y, dx: 7, dy: 0 });  // Straight
+                    bullets.push({ x: player.x + 25, y: player.y, dx: 7, dy: 1 });  // Scatter down
+                }
+                bulletSound.play().catch(e => console.error('Bullet sound error:', e));
+                keys['spaceHeld'] = true;
+            }
+            if (!keys[' ']) keys['spaceHeld'] = false;
+
+            // Update bullets
+            bullets.forEach(b => { b.x += b.dx; b.y += (b.dy || 0); });
+            bullets = bullets.filter(b => b.x <= 800);
+
+            // Update enemies
+            enemies.forEach(e => {
+                e.x -= e.speed;
+                if (e.x < 0) {
+                    gameOver = true;
+                    gameOverText.textContent = 'Game Over';
+                }
+            });
+
+            // Update powerups
+            powerups.forEach((p, i) => {
+                if (Math.hypot(player.x - p.x, player.y - p.y) < 30) {
+                    player.bullets = 3; // Upgrade to 3 scattering bullets
+                    powerups.splice(i, 1);
+                }
+            });
+
+            // Bullet-enemy collision
+            bullets.forEach((b, bi) => {
+                enemies.forEach((e, ei) => {
+                    if (Math.hypot(b.x - e.x, b.y - e.y) < 20) {
+                        enemies.splice(ei, 1);
+                        bullets.splice(bi, 1);
+                        score += 10000;
+                    }
+                });
+            });
+
+            // Spawning
+            if (Math.random() < 0.05 && enemies.length + enemiesSpawned < totalEnemies) spawnEnemy();
+            spawnPowerup();
+
+            // Win condition
+            if (enemies.length === 0 && enemiesSpawned === totalEnemies) {
+                gameOver = true;
+                gameOverText.textContent = 'You Win!';
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, 800, 600);
+
+            // Draw aquatic plants
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(100, 500, 20, 100);
+            ctx.fillRect(300, 450, 15, 150);
+            ctx.fillRect(500, 480, 25, 120);
+
+            // Draw player
+            ctx.drawImage(pearlImg, player.x - 25, player.y - 25, 50, 50);
+
+            // Draw enemies
+            enemies.forEach(e => ctx.drawImage(enemyImg, e.x - 20, e.y - 20, 40, 40));
+
+            // Draw bullets
+            bullets.forEach(b => ctx.drawImage(bulletImg, b.x - 5, b.y - 5, 10, 10));
+
+            // Draw powerups
+            powerups.forEach(p => ctx.drawImage(bulletImg, p.x - 15, p.y - 15, 30, 30));
+
+            // Draw score
+            ctx.fillStyle = 'black';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Score: $${score.toLocaleString()}`, 10, 30);
+
+            // Game over screen
+            if (gameOver) gameOverScreen.style.display = 'block';
+            else gameOverScreen.style.display = 'none';
+        }
+
+        function resetGame() {
+            player = { x: 50, y: 300, bullets: 1 };
+            enemies = [];
+            bullets = [];
+            powerups = [];
+            score = 0;
+            gameOver = false;
+            enemiesSpawned = 0;
+            music.play().catch(e => console.error('Music error:', e));
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Load all assets before starting
+        let assetsLoaded = 0;
+        const totalAssets = 3; // Images only
+
+        function assetLoaded() {
+            assetsLoaded++;
+            if (assetsLoaded === totalAssets) {
+                console.log('All assets loaded, starting game...');
+                music.play().catch(e => console.error('Music error:', e));
+                gameLoop();
+            }
+        }
+
+        pearlImg.onload = assetLoaded; pearlImg.onerror = () => console.error('Failed to load pearl.png');
+        enemyImg.onload = assetLoaded; enemyImg.onerror = () => console.error('Failed to load enemy.png');
+        bulletImg.onload = assetLoaded; bulletImg.onerror = () => console.error('Failed to load bullet.png');
+    </script>
+</body>
+</html>
